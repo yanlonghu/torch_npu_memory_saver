@@ -70,7 +70,7 @@ export PYTORCH_NPU_ALLOC_CONF=expandable_segments:False
 unset PYTORCH_NO_NPU_MEMORY_CACHING
 
 python -m pip wheel --no-deps . --wheel-dir dist
-python -m pip install --no-deps dist/torch_npu_memory_saver-0.1.0.dev0-*.whl
+python -m pip install --no-deps dist/torch_npu_memory_saver-0.1.0-*.whl
 python -c 'from importlib.metadata import version; print(version("torch-npu-memory-saver"))'
 ```
 
@@ -153,3 +153,16 @@ On an exclusively assigned NPU, run the independent graph test with
 `RUN_NPU_MEMORY_SAVER_TESTS=1 python -m pytest tests/test_npu_graph.py`. It checks
 three backup/discard cycles, same addresses, and replay after poisoning owned
 discard storage. This is opt-in even when a native library is installed.
+
+## Publishing
+
+Maintainers publish source distributions with the manually triggered
+`.github/workflows/publish.yml` workflow on `main`. The `pypi` GitHub environment
+uses PyPI Trusted Publishing; no long-lived API token is required. Register
+owner `yanlonghu`, repository `torch_npu_memory_saver`, workflow `publish.yml`,
+and environment `pypi` in PyPI before the first run. Increment the project
+version for subsequent releases; PyPI does not allow replacing a release file.
+
+The workflow validates package metadata and uploads only the source archive.
+Installation compiles the native library against the user's configured CANN
+toolkit. It does not imply support for untested Torch/PTA/CANN combinations.
