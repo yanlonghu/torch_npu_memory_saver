@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=69", "wheel", "cmake>=3.18"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "torch-npu-memory-saver"
+version = "0.1.0.dev0"
+description = "Managed Ascend memory with stable virtual addresses"
+requires-python = ">=3.11"
+license = {file = "LICENSE"}
+readme = "README.md"
+dependencies = ["torch>=2.9", "torch-npu>=2.9"]
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
+[tool.setuptools.package-data]
+torch_npu_memory_saver = ["lib/*.so"]
