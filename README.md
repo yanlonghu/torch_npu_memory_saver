@@ -36,7 +36,26 @@ or choose a matching Torch/PTA/CANN stack. Prepare that stack first, then use
 `--no-deps` below to preserve it. This package does not install CANN, drivers,
 TokenSpeed, Triton or CUDA's `torch_memory_saver`.
 
-## Install from source
+## Install with pip
+
+After preparing the matching Torch/PTA stack and loading the CANN toolkit
+environment, install directly from the public repository:
+
+```bash
+python -m pip install --no-deps \
+  "git+https://github.com/yanlonghu/torch_npu_memory_saver.git@main"
+```
+
+This requires Git and builds the native library locally. For reproducible
+deployments, replace `main` with a reviewed full commit hash. `--no-deps`
+preserves the preinstalled Torch/PTA versions; build tools are still provisioned
+by pip. For an offline build, preinstall the listed build tools and additionally
+pass `--no-build-isolation`, using a local source checkout.
+
+The project is not yet published on PyPI: the bare command
+`pip install torch-npu-memory-saver` is not an available installation route.
+
+### Build and keep a wheel
 
 In an environment with the matching Torch/PTA installation:
 
