@@ -11,6 +11,14 @@ license = {file = "LICENSE"}
 readme = "README.md"
 dependencies = ["torch>=2.9", "torch-npu>=2.9"]
 
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.urls]
+Repository = "https://github.com/yanlonghu/torch_npu_memory_saver"
+Issues = "https://github.com/yanlonghu/torch_npu_memory_saver/issues"
+Documentation = "https://github.com/yanlonghu/torch_npu_memory_saver/blob/main/README.md"
+
 [tool.setuptools.packages.find]
 where = ["python"]
 
