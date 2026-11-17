@@ -2,7 +2,8 @@
 
 Release managed Ascend device memory and restore it at the same virtual addresses.
 Extracted from [TokenSpeed PR #3530](https://github.com/lightseekorg/tokenspeed/pull/3530)
-at `269b59a9`. The native allocator retains ABI 2. No PyPI package has been published.
+at `269b59a9`. The native allocator retains ABI 2. Source releases are available on
+[PyPI](https://pypi.org/project/torch-npu-memory-saver/).
 
 ## Dependencies
 
@@ -39,7 +40,16 @@ TokenSpeed, Triton or CUDA's `torch_memory_saver`.
 ## Install with pip
 
 After preparing the matching Torch/PTA stack and loading the CANN toolkit
-environment, install directly from the public repository:
+environment, install the PyPI source distribution:
+
+```bash
+python -m pip install --no-deps torch-npu-memory-saver==0.1.0
+```
+
+Pip compiles the native library locally; CANN headers and libraries, CMake and
+a C++17 compiler are required. No prebuilt wheel is published in this release.
+
+To install directly from the public repository instead:
 
 ```bash
 python -m pip install --no-deps \
@@ -51,9 +61,6 @@ deployments, replace `main` with a reviewed full commit hash. `--no-deps`
 preserves the preinstalled Torch/PTA versions; build tools are still provisioned
 by pip. For an offline build, preinstall the listed build tools and additionally
 pass `--no-build-isolation`, using a local source checkout.
-
-The project is not yet published on PyPI: the bare command
-`pip install torch-npu-memory-saver` is not an available installation route.
 
 ### Build and keep a wheel
 
