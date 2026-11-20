@@ -17,6 +17,18 @@ implement TokenSpeed's model loading, cache invalidation or multi-rank protocol.
 - Installed PTA identifies itself as `2.9.0+gitee1742b`, git
   `ee1742b06d2c0e59cb0b357288ec29ee190cfd2d`.
 
+## 0.1.1 full-suspend cache trimming
+
+On the A2 stack above, a wheel built from the standalone source distribution
+passed all 14 Python tests, including the three-cycle device graph test, and
+all four native allocator tests. A partial pause kept the cache intact. A full
+pause trimmed it once, including after retrying an injected trim failure.
+
+With the TokenSpeed thin adapter over [`674ca800`](https://github.com/lightseekorg/tokenspeed/commit/674ca8006cfb23a2a2b144702112293dba912c56),
+Qwen3-0.6B TP2 completed three suspend/resume cycles with HCCL AIV and
+CPU-backed weights. Both prompts matched all 16 pre-suspend output tokens in
+each cycle. Both ranks loaded the wheel's bundled allocator and exited cleanly.
+
 ## Results
 
 | Check | Result |

@@ -2,7 +2,9 @@
 
 Release managed Ascend device memory and restore it at the same virtual addresses.
 Extracted from [TokenSpeed PR #3530](https://github.com/lightseekorg/tokenspeed/pull/3530)
-at `269b59a9`. The native allocator retains ABI 2. Source releases are available on
+at `269b59a9`, with full-suspend cache trimming from
+[`a7d040f0`](https://github.com/lightseekorg/tokenspeed/commit/a7d040f047de4b44adac617b41cd5476cc0c60c9).
+The native allocator retains ABI 2. Source releases are available on
 [PyPI](https://pypi.org/project/torch-npu-memory-saver/).
 
 ## Dependencies
@@ -43,7 +45,7 @@ After preparing the matching Torch/PTA stack and loading the CANN toolkit
 environment, install the PyPI source distribution:
 
 ```bash
-python -m pip install --no-deps torch-npu-memory-saver==0.1.0
+python -m pip install --no-deps torch-npu-memory-saver==0.1.1
 ```
 
 Pip compiles the native library locally; CANN headers and libraries, CMake and
@@ -77,7 +79,7 @@ export PYTORCH_NPU_ALLOC_CONF=expandable_segments:False
 unset PYTORCH_NO_NPU_MEMORY_CACHING
 
 python -m pip wheel --no-deps . --wheel-dir dist
-python -m pip install --no-deps dist/torch_npu_memory_saver-0.1.0-*.whl
+python -m pip install --no-deps dist/torch_npu_memory_saver-0.1.1-*.whl
 python -c 'from importlib.metadata import version; print(version("torch-npu-memory-saver"))'
 ```
 
@@ -123,6 +125,10 @@ auto_dispatch_capture)` captures into an owned pool. `pause(tag=None)` and
 or failed regions. `stats()` reports allocator accounting;
 `validate_allocations(allocations, graphs=...)` checks storage and pool ownership.
 Each allocation record is `(tag, name, pointer, byte_size)`.
+
+Starting in 0.1.1, the last pause that leaves all existing managed blocks
+paused calls `torch.npu.empty_cache()` once per worker. Partial pauses leave
+the cache alone. The next cycle starts when a previously trimmed tag resumes.
 
 Backup restores bytes at the same virtual address. Discard restores mappings
 with undefined contents: initialize before use. Graph executables and HCCL

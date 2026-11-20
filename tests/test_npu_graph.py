@@ -22,6 +22,7 @@
 
 import ctypes
 import os
+from unittest.mock import Mock
 
 import pytest
 
@@ -30,7 +31,7 @@ import pytest
     os.environ.get("RUN_NPU_MEMORY_SAVER_TESTS") != "1",
     reason="requires RUN_NPU_MEMORY_SAVER_TESTS=1 and an exclusively assigned NPU",
 )
-def test_graph_discard_preserves_persistent_buffers():
+def test_graph_discard_preserves_persistent_buffers(monkeypatch):
     import torch
 
     pytest.importorskip("torch_npu")
@@ -76,8 +77,20 @@ def test_graph_discard_preserves_persistent_buffers():
             ctypes.c_size_t,
         ]
         memset.restype = ctypes.c_int
-        for _ in range(3):
+        trim = Mock(wraps=torch.npu.empty_cache)
+        monkeypatch.setattr(torch.npu, "empty_cache", trim)
+        for cycle in range(3):
+            saver.pause("weights")
+            assert trim.call_count == cycle
+            if cycle == 0:
+                trim.side_effect = RuntimeError("injected trim failure")
+                with pytest.raises(RuntimeError, match="injected trim failure"):
+                    saver.pause("acl_graph")
+                trim.side_effect = None
+                trim.reset_mock()
+            saver.pause("acl_graph")
             saver.pause()
+            assert trim.call_count == cycle + 1
             paused = blocks()
             assert saver.stats()["physical_bytes"] == 0
             assert saver.stats()["valid_backup_bytes"] > 0
