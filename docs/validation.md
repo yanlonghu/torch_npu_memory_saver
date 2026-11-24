@@ -1,5 +1,15 @@
 # Validation coverage
 
+## 0.1.3 HCCL registration
+
+On Atlas A2 (910B3), a Python 3.12 wheel was built against CANN 9.0.0
+and the patched PTA 2.9 baseline. The opt-in device graph test passed. The
+process mapped the ABI 3 library bundled in the installed wheel. Host tests
+also cover registration, deactivation and rollback failures without device
+hardware. This revision's Atlas A3 full-model replay is pending hardware
+validation.
+
+
 The initial extraction retains the allocator implementation from TokenSpeed
 `269b59a95f258188ce380933ef98f418bea2abe6`. The standalone library does not
 implement TokenSpeed's model loading, cache invalidation or multi-rank protocol.

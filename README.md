@@ -41,28 +41,19 @@ TokenSpeed, Triton or CUDA's `torch_memory_saver`.
 
 ## Install with pip
 
-After preparing the matching Torch/PTA stack and loading the CANN toolkit
-environment, install the PyPI source distribution:
-
-```bash
-python -m pip install --no-deps torch-npu-memory-saver==0.1.1
-```
-
-Pip compiles the native library locally; CANN headers and libraries, CMake and
-a C++17 compiler are required. No prebuilt wheel is published in this release.
-
-To install directly from the public repository instead:
+With the matching Torch/PTA stack installed and CANN loaded, install the
+0.1.3 source revision for HCCL memory registration on Atlas A3:
 
 ```bash
 python -m pip install --no-deps \
-  "git+https://github.com/yanlonghu/torch_npu_memory_saver.git@main"
+  "torch-npu-memory-saver @ git+https://github.com/yanlonghu/torch_npu_memory_saver.git@95b6ee6f67e1fa2d4ca2357ffeba7fc9eeb972c0"
 ```
 
-This requires Git and builds the native library locally. For reproducible
-deployments, replace `main` with a reviewed full commit hash. `--no-deps`
-preserves the preinstalled Torch/PTA versions; build tools are still provisioned
-by pip. For an offline build, preinstall the listed build tools and additionally
-pass `--no-build-isolation`, using a local source checkout.
+Pip builds the native library locally against the configured CANN toolkit.
+This requires Git, the CANN development headers and libraries, CMake 3.18+
+and a C++17 compiler. For an offline deployment, build a wheel from the
+same revision on a matching system. The earlier 0.1.1 release is available
+on PyPI for deployments using saver ABI 2.
 
 ### Build and keep a wheel
 
