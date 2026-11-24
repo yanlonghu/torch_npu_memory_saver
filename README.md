@@ -41,12 +41,16 @@ TokenSpeed, Triton or CUDA's `torch_memory_saver`.
 
 ## Install with pip
 
-With the matching Torch/PTA stack installed and CANN loaded, install the
-0.1.3 source revision for HCCL memory registration on Atlas A3:
+Version 0.1.4 keeps Atlas A3 mappings alive if an HCCL registration operation
+fails. With the matching Torch/PTA stack installed and CANN loaded, build it
+from source. For a TokenSpeed deployment, set `SAVER_REVISION` to the full
+standalone saver commit in its `docs/serving/ascend-memory-saver.md` install
+command. The example otherwise uses the current `main` and checks the version.
 
 ```bash
 python -m pip install --no-deps \
-  "torch-npu-memory-saver @ git+https://github.com/yanlonghu/torch_npu_memory_saver.git@95b6ee6f67e1fa2d4ca2357ffeba7fc9eeb972c0"
+  "torch-npu-memory-saver @ git+https://github.com/yanlonghu/torch_npu_memory_saver.git@${SAVER_REVISION:-main}"
+python -c 'from importlib.metadata import version; assert version("torch-npu-memory-saver") == "0.1.4"'
 ```
 
 Pip builds the native library locally against the configured CANN toolkit.
@@ -62,6 +66,7 @@ In an environment with the matching Torch/PTA installation:
 ```bash
 git clone https://github.com/yanlonghu/torch_npu_memory_saver.git
 cd torch_npu_memory_saver
+git checkout --detach "${SAVER_REVISION:-origin/main}"
 
 # Replace this with your deployment's CANN toolkit directory.
 export ASCEND_HOME_PATH=/path/to/cann
@@ -70,7 +75,7 @@ export PYTORCH_NPU_ALLOC_CONF=expandable_segments:False
 unset PYTORCH_NO_NPU_MEMORY_CACHING
 
 python -m pip wheel --no-deps . --wheel-dir dist
-python -m pip install --no-deps dist/torch_npu_memory_saver-0.1.3-*.whl
+python -m pip install --no-deps dist/torch_npu_memory_saver-0.1.4-*.whl
 python -c 'from importlib.metadata import version; print(version("torch-npu-memory-saver"))'
 ```
 
@@ -123,6 +128,10 @@ The runtime registers each segment before a collective can use it, deactivates
 it before unmapping and reactivates the new physical handle before graph replay.
 Drain outstanding work and call `memory_saver.close_hccl()` before destroying
 the group. Single-rank and Atlas A2 workers use the ordinary ACL VMM path.
+If HCCL reports an error setting, activating, deactivating or unsetting a range,
+a peer may still reference its backing memory. The saver retains the mappings
+and refuses subsequent allocations, transitions and cleanup. Restart the
+workers before reusing the device memory.
 
 Starting in 0.1.1, the last pause that leaves all existing managed blocks
 paused calls `torch.npu.empty_cache()` once per worker. Partial pauses leave

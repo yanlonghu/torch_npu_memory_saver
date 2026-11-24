@@ -1,5 +1,15 @@
 # Validation coverage
 
+## 0.1.4 HCCL registration errors
+
+All 13 native fake-ACL tests passed on the host. Eight cases inject an error
+before or after changing the simulated peer registration for set, activate,
+deactivate and unset. Each checks that the worker reports the fault, retains
+the virtual address and physical backing, and refuses subsequent transitions
+and cleanup. A separate case covers a deactivation error in the free callback.
+The host Python suite passed 15 tests, including the callback health check
+after cache trimming. The opt-in NPU graph test was skipped on this host.
+
 ## 0.1.3 HCCL registration
 
 On Atlas A2 (910B3), a Python 3.12 wheel was built against CANN 9.0.0

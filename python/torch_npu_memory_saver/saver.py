@@ -242,8 +242,8 @@ class NpuMemorySaver:
             state.native.configure_hccl(backend.get_hccl_comm(state.device))
 
     def close_hccl(self) -> None:
-        """Detach ranges while the communicator is alive, including on failed cleanup."""
-        # Cleanup must remain available after an allocator callback fault.
+        """Keep the communicator alive until the native detach succeeds."""
+        # The native allocator decides whether registration state permits cleanup.
         with _state_lock:
             state = _states.get(os.getpid())
             if state is not None and state.hccl_group is not None:
