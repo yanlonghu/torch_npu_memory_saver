@@ -4,7 +4,7 @@ Release managed Ascend device memory and restore it at the same virtual addresse
 Extracted from [TokenSpeed PR #3530](https://github.com/lightseekorg/tokenspeed/pull/3530)
 at `269b59a9`, with full-suspend cache trimming from
 [`a7d040f0`](https://github.com/lightseekorg/tokenspeed/commit/a7d040f047de4b44adac617b41cd5476cc0c60c9).
-The native allocator retains ABI 2. Source releases are available on
+Build the Python package and its ABI 3 native allocator from the same revision. Source releases are available on
 [PyPI](https://pypi.org/project/torch-npu-memory-saver/).
 
 ## Dependencies
@@ -79,7 +79,7 @@ export PYTORCH_NPU_ALLOC_CONF=expandable_segments:False
 unset PYTORCH_NO_NPU_MEMORY_CACHING
 
 python -m pip wheel --no-deps . --wheel-dir dist
-python -m pip install --no-deps dist/torch_npu_memory_saver-0.1.1-*.whl
+python -m pip install --no-deps dist/torch_npu_memory_saver-0.1.3-*.whl
 python -c 'from importlib.metadata import version; print(version("torch-npu-memory-saver"))'
 ```
 
@@ -126,9 +126,18 @@ or failed regions. `stats()` reports allocator accounting;
 `validate_allocations(allocations, graphs=...)` checks storage and pool ownership.
 Each allocation record is `(tag, name, pointer, byte_size)`.
 
+For multi-rank Atlas A3 workers, call `memory_saver.configure_hccl(local_group)`
+on every rank of the node-local HCCL group before the first managed allocation.
+The runtime registers each segment before a collective can use it, deactivates
+it before unmapping and reactivates the new physical handle before graph replay.
+Drain outstanding work and call `memory_saver.close_hccl()` before destroying
+the group. Single-rank and Atlas A2 workers use the ordinary ACL VMM path.
+
 Starting in 0.1.1, the last pause that leaves all existing managed blocks
 paused calls `torch.npu.empty_cache()` once per worker. Partial pauses leave
 the cache alone. The next cycle starts when a previously trimmed tag resumes.
+Version 0.1.2 reports allocator callback failures during trimming to the caller
+before the pause returns.
 
 Backup restores bytes at the same virtual address. Discard restores mappings
 with undefined contents: initialize before use. Graph executables and HCCL

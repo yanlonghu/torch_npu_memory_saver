@@ -61,12 +61,13 @@ class NativeBackend:
     def __init__(self, library: str):
         self.library = ctypes.CDLL(library)
         self._trimmed_tags: set[str] = set()
+        self._hccl_library: ctypes.CDLL | None = None
         self.library.saver_abi_version.argtypes = []
         self.library.saver_abi_version.restype = ctypes.c_int
         self.library.saver_has_callback_fault.argtypes = []
         self.library.saver_has_callback_fault.restype = ctypes.c_int
-        if self.library.saver_abi_version() != 2:
-            raise RuntimeError("Rebuild the Ascend memory saver library for ABI 2")
+        if self.library.saver_abi_version() != 3:
+            raise RuntimeError("Rebuild the Ascend memory saver library for ABI 3")
         for name in ("saver_pause", "saver_resume"):
             operation = getattr(self.library, name)
             operation.argtypes = [ctypes.c_char_p]
@@ -75,6 +76,32 @@ class NativeBackend:
             operation = getattr(self.library, name)
             operation.argtypes = []
             operation.restype = ctypes.c_char_p
+
+    def configure_hccl(self, communicator: int) -> None:
+        self._hccl_library = ctypes.CDLL("libhccl.so")
+        configure = self.library.saver_configure_hccl
+        configure.argtypes = [ctypes.c_void_p] * 5
+        configure.restype = ctypes.c_int
+        functions = (
+            "HcclCommSetMemoryRange",
+            "HcclCommUnsetMemoryRange",
+            "HcclCommActivateCommMemory",
+            "HcclCommDeactivateCommMemory",
+        )
+        addresses = [
+            ctypes.cast(getattr(self._hccl_library, name), ctypes.c_void_p)
+            for name in functions
+        ]
+        if configure(communicator, *addresses) != 0:
+            raise RuntimeError(self.library.saver_last_error().decode(errors="replace"))
+
+    def close_hccl(self) -> None:
+        close = self.library.saver_close_hccl
+        close.argtypes = []
+        close.restype = ctypes.c_int
+        if close() != 0:
+            raise RuntimeError(self.library.saver_last_error().decode(errors="replace"))
+        self._hccl_library = None
 
     def check_health(self) -> None:
         if self.library.saver_has_callback_fault():
@@ -98,6 +125,8 @@ class NativeBackend:
         blocks = self.stats()["blocks"]
         if blocks and all(block["phase"] == "paused" for block in blocks):
             torch.npu.empty_cache()
+            # A void allocator callback can record a failure without raising here.
+            self.check_health()
             self._trimmed_tags = {block["tag"] for block in blocks}
 
     def resume(self, tag: str | None) -> None:
@@ -139,6 +168,7 @@ class DeviceState:
         self.device = device
         self.library_path = _library_path()
         self.native = NativeBackend(self.library_path)
+        self.hccl_group: "torch.distributed.ProcessGroup | None" = None
         self.state = PoolState(
             backend=self.native, make_pool=self.make_pool, synchronize=self.synchronize
         )
@@ -193,6 +223,33 @@ class NpuMemorySaver:
         _check_caching_allocator()
         _library_path()
         yield
+
+    def configure_hccl(self, group: "torch.distributed.ProcessGroup") -> None:
+        """Bind a local HCCL domain before managed allocations can be registered implicitly."""
+        import torch.distributed as dist
+
+        state = self._state()
+        with _state_lock:
+            if state.hccl_group is not None:
+                raise RuntimeError("HCCL memory registration is already configured")
+            marker = torch.ones(
+                1, dtype=torch.float32, device=torch.device("npu", state.device)
+            )
+            dist.all_reduce(marker, group=group)
+            state.synchronize()
+            backend = group._get_backend(marker.device)
+            state.hccl_group = group  # Keep the communicator alive through cleanup.
+            state.native.configure_hccl(backend.get_hccl_comm(state.device))
+
+    def close_hccl(self) -> None:
+        """Detach ranges while the communicator is alive, including on failed cleanup."""
+        # Cleanup must remain available after an allocator callback fault.
+        with _state_lock:
+            state = _states.get(os.getpid())
+            if state is not None and state.hccl_group is not None:
+                state.synchronize()
+                state.native.close_hccl()
+                state.hccl_group = None
 
     def region(self, tag: str | None = None, enable_cpu_backup: bool = False):
         if tag is None:
