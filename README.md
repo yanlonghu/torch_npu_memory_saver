@@ -4,7 +4,8 @@ Release managed Ascend device memory and restore it at the same virtual addresse
 Extracted from [TokenSpeed PR #3530](https://github.com/lightseekorg/tokenspeed/pull/3530)
 at `269b59a9`, with full-suspend cache trimming from
 [`a7d040f0`](https://github.com/lightseekorg/tokenspeed/commit/a7d040f047de4b44adac617b41cd5476cc0c60c9).
-Build the Python package and its ABI 3 native allocator from the same revision. Source releases are available on
+Build the Python package and its ABI 4 native allocator from the same revision.
+Source releases are available on
 [PyPI](https://pypi.org/project/torch-npu-memory-saver/).
 
 ## Dependencies
@@ -41,23 +42,28 @@ TokenSpeed, Triton or CUDA's `torch_memory_saver`.
 
 ## Install with pip
 
-Version 0.1.4 keeps Atlas A3 mappings alive if an HCCL registration operation
-fails. With the matching Torch/PTA stack installed and CANN loaded, build it
-from source. For a TokenSpeed deployment, set `SAVER_REVISION` to the full
+Version 0.1.5 requires native ABI 4, which keeps Atlas A3 mappings alive if
+an HCCL registration operation fails. Older ABI 3 libraries are rejected before
+allocator callbacks or HCCL operations can run, including an override with the
+same library filename. With the matching Torch/PTA stack installed and CANN
+loaded, build it from source. For a TokenSpeed deployment, set `SAVER_REVISION` to the full
 standalone saver commit in its `docs/serving/ascend-memory-saver.md` install
 command. The example otherwise uses the current `main` and checks the version.
 
 ```bash
 python -m pip install --no-deps \
   "torch-npu-memory-saver @ git+https://github.com/yanlonghu/torch_npu_memory_saver.git@${SAVER_REVISION:-main}"
-python -c 'from importlib.metadata import version; assert version("torch-npu-memory-saver") == "0.1.4"'
+python -c 'from importlib.metadata import version; assert version("torch-npu-memory-saver") == "0.1.5"'
 ```
 
 Pip builds the native library locally against the configured CANN toolkit.
 This requires Git, the CANN development headers and libraries, CMake 3.18+
 and a C++17 compiler. For an offline deployment, build a wheel from the
-same revision on a matching system. The earlier 0.1.1 release is available
-on PyPI for deployments using saver ABI 2.
+same revision on a matching system. Rebuild offline wheels and update any
+`TORCH_NPU_MEMORY_SAVER_LIBRARY` override when upgrading. Libraries built by
+package versions through 0.1.4 advertise ABI 2 or 3 and cannot be combined with
+this Python package.
+Updating package metadata alone does not upgrade an old native library.
 
 ### Build and keep a wheel
 
@@ -75,7 +81,7 @@ export PYTORCH_NPU_ALLOC_CONF=expandable_segments:False
 unset PYTORCH_NO_NPU_MEMORY_CACHING
 
 python -m pip wheel --no-deps . --wheel-dir dist
-python -m pip install --no-deps dist/torch_npu_memory_saver-0.1.4-*.whl
+python -m pip install --no-deps dist/torch_npu_memory_saver-0.1.5-*.whl
 python -c 'from importlib.metadata import version; print(version("torch-npu-memory-saver"))'
 ```
 

@@ -12,7 +12,7 @@ from torch_npu_memory_saver.state import PoolState
 
 def test_cache_trim_callback_fault_fails_pause(monkeypatch):
     library = Mock()
-    library.saver_abi_version.return_value = 3
+    library.saver_abi_version.return_value = 4
     library.saver_pause.return_value = 0
     library.saver_has_callback_fault.return_value = 0
     library.saver_stats.return_value = b'{"blocks":[{"phase":"paused","tag":"weights"}],"callback_error":"free failed"}'
