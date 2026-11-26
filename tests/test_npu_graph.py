@@ -119,3 +119,43 @@ def test_graph_discard_preserves_persistent_buffers(monkeypatch):
         saver.resume()
         graph.reset()
         torch.npu.synchronize()
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_NPU_MEMORY_SAVER_TESTS") != "1",
+    reason="requires RUN_NPU_MEMORY_SAVER_TESTS=1 and an exclusively assigned NPU",
+)
+def test_kv_backup_preserves_contents_and_virtual_address():
+    import torch
+
+    pytest.importorskip("torch_npu")
+    from torch_npu_memory_saver import NpuMemorySaver
+    from torch_npu_memory_saver.state import AllocationPolicy, PoolKey
+
+    torch.npu.set_device(0)
+    saver = NpuMemorySaver()
+    key = PoolKey("kv_cache", AllocationPolicy.CPU_BACKUP, "test_kv_backup")
+    with saver.allocation_region(key):
+        tensor = torch.empty(4096, dtype=torch.int32, device="npu")
+    pointer = tensor.data_ptr()
+    try:
+        for value in (19, 57, 163):
+            tensor.fill_(value)
+            torch.npu.synchronize()
+            expected = tensor.cpu()
+            saver.pause("kv_cache")
+            blocks = [
+                block
+                for block in saver.stats()["blocks"]
+                if block["tag"] == "kv_cache"
+                and int(block["ptr"], 16)
+                <= pointer
+                < int(block["ptr"], 16) + block["aligned_bytes"]
+            ]
+            assert len(blocks) == 1
+            assert blocks[0]["backup_valid"] and not blocks[0]["physical_live"]
+            saver.resume("kv_cache")
+            assert tensor.data_ptr() == pointer
+            torch.testing.assert_close(tensor.cpu(), expected, rtol=0, atol=0)
+    finally:
+        saver.resume("kv_cache")

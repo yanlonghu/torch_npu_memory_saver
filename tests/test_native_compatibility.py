@@ -20,9 +20,12 @@
 
 """Load real shared libraries to verify the native safety contract."""
 
+import ctypes
 import shutil
+import sys
 import subprocess
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -67,11 +70,11 @@ def current_native_library(tmp_path_factory, native_compiler):
 def test_current_native_library_is_accepted(current_native_library):
     backend = saver.NativeBackend(str(current_native_library))
     backend.check_health()
-    assert backend.stats()["abi_version"] == 4
+    assert backend.stats()["abi_version"] == 5
     assert backend.stats()["segments"] == 0
 
 
-@pytest.mark.parametrize("version", [2, 3, 5, None])
+@pytest.mark.parametrize("version", [2, 3, 4, 6, None])
 def test_override_rejects_incompatible_native_library(
     monkeypatch, tmp_path, native_compiler, version
 ):
@@ -91,5 +94,63 @@ def test_override_rejects_incompatible_native_library(
         text=True,
     )
     monkeypatch.setenv("TORCH_NPU_MEMORY_SAVER_LIBRARY", str(library))
-    with pytest.raises(RuntimeError, match="requires native ABI 4"):
+    with pytest.raises(RuntimeError, match="requires native ABI 5"):
         saver.NativeBackend(saver._library_path())
+
+
+@pytest.mark.parametrize("backup", [False, True])
+def test_kv_pool_policy_restores_or_discards_real_bytes(
+    monkeypatch, current_native_library, backup
+):
+    # Only PTA's unavailable MemPool constructors are represented locally. The
+    # policy selection, allocator callbacks and storage transitions are real.
+    class NativeAllocator:
+        def __init__(self, library, allocate, free):
+            self.library = ctypes.CDLL(library)
+            self.allocate = getattr(self.library, allocate)
+            self.allocate.argtypes = [ctypes.c_size_t, ctypes.c_int, ctypes.c_void_p]
+            self.allocate.restype = ctypes.c_void_p
+
+        def allocator(self):
+            return self
+
+    class NativePool:
+        def __init__(self, allocator):
+            self.allocator = allocator
+
+    memory = ModuleType("torch_npu.npu.memory")
+    memory.NPUPluggableAllocator = NativeAllocator
+    memory.MemPool = NativePool
+    memory.use_mem_pool = None
+    npu = ModuleType("torch_npu.npu")
+    npu.memory = memory
+    monkeypatch.setitem(sys.modules, "torch_npu", ModuleType("torch_npu"))
+    monkeypatch.setitem(sys.modules, "torch_npu.npu", npu)
+    monkeypatch.setitem(sys.modules, "torch_npu.npu.memory", memory)
+    monkeypatch.setenv("TORCH_NPU_MEMORY_SAVER_LIBRARY", str(current_native_library))
+    monkeypatch.setenv("PYTORCH_NPU_ALLOC_CONF", "expandable_segments:False")
+    monkeypatch.delenv("PYTORCH_NO_NPU_MEMORY_CACHING", raising=False)
+    device = saver.DeviceState(0)
+    policy = (
+        saver.AllocationPolicy.CPU_BACKUP if backup else saver.AllocationPolicy.DISCARD
+    )
+    owned = device.make_pool(saver.PoolKey("kv_cache", policy, "decode"))
+    pointer = owned.allocator.allocate(7000, 0, None)
+    assert pointer
+    release = device.native.library.saver_release
+    release.argtypes = [ctypes.c_void_p]
+    release.restype = ctypes.c_int
+    try:
+        for value in (0x19, 0x57, 0xA3):
+            ctypes.memset(pointer, value, 7000)
+            assert device.native.library.saver_pause(b"kv_cache") == 0
+            stats = device.native.stats()
+            assert stats["physical_bytes"] == 0
+            assert stats["blocks"][0]["tag"] == "kv_cache"
+            assert stats["host_bytes"] == (8192 if backup else 0)
+            assert device.native.library.saver_resume(b"kv_cache") == 0
+            expected = value if backup else 0xCD
+            assert ctypes.string_at(pointer, 7000) == bytes([expected]) * 7000
+            assert device.native.stats()["host_bytes"] == 0
+    finally:
+        assert release(pointer) == 0

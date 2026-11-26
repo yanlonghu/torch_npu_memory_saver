@@ -4,7 +4,7 @@ Release managed Ascend device memory and restore it at the same virtual addresse
 Extracted from [TokenSpeed PR #3530](https://github.com/lightseekorg/tokenspeed/pull/3530)
 at `269b59a9`, with full-suspend cache trimming from
 [`a7d040f0`](https://github.com/lightseekorg/tokenspeed/commit/a7d040f047de4b44adac617b41cd5476cc0c60c9).
-Build the Python package and its ABI 4 native allocator from the same revision.
+Build the Python package and its ABI 5 native allocator from the same revision.
 Source releases are available on
 [PyPI](https://pypi.org/project/torch-npu-memory-saver/).
 
@@ -42,26 +42,23 @@ TokenSpeed, Triton or CUDA's `torch_memory_saver`.
 
 ## Install with pip
 
-Version 0.1.5 requires native ABI 4, which keeps Atlas A3 mappings alive if
-an HCCL registration operation fails. Older ABI 3 libraries are rejected before
-allocator callbacks or HCCL operations can run, including an override with the
-same library filename. With the matching Torch/PTA stack installed and CANN
-loaded, build it from source. For a TokenSpeed deployment, set `SAVER_REVISION` to the full
-standalone saver commit in its `docs/serving/ascend-memory-saver.md` install
-command. The example otherwise uses the current `main` and checks the version.
+Version 0.1.6 adds real `kv_cache` CPU backup and requires native ABI 5.
+It retains the fail-closed Atlas A3 HCCL registration handling from 0.1.5.
+Older libraries, including ABI 4 builds with the same filename, are rejected
+before allocator callbacks or HCCL operations can run. With the matching
+Torch/PTA stack installed and CANN loaded, install the release from PyPI.
 
 ```bash
-python -m pip install --no-deps \
-  "torch-npu-memory-saver @ git+https://github.com/yanlonghu/torch_npu_memory_saver.git@${SAVER_REVISION:-main}"
-python -c 'from importlib.metadata import version; assert version("torch-npu-memory-saver") == "0.1.5"'
+python -m pip install --no-deps torch-npu-memory-saver==0.1.6
+python -c 'from importlib.metadata import version; assert version("torch-npu-memory-saver") == "0.1.6"'
 ```
 
 Pip builds the native library locally against the configured CANN toolkit.
-This requires Git, the CANN development headers and libraries, CMake 3.18+
+This requires the CANN development headers and libraries, CMake 3.18+
 and a C++17 compiler. For an offline deployment, build a wheel from the
 same revision on a matching system. Rebuild offline wheels and update any
 `TORCH_NPU_MEMORY_SAVER_LIBRARY` override when upgrading. Libraries built by
-package versions through 0.1.4 advertise ABI 2 or 3 and cannot be combined with
+package versions through 0.1.5 advertise ABI 2, 3 or 4 and cannot be combined with
 this Python package.
 Updating package metadata alone does not upgrade an old native library.
 
@@ -72,7 +69,7 @@ In an environment with the matching Torch/PTA installation:
 ```bash
 git clone https://github.com/yanlonghu/torch_npu_memory_saver.git
 cd torch_npu_memory_saver
-git checkout --detach "${SAVER_REVISION:-origin/main}"
+git checkout --detach v0.1.6
 
 # Replace this with your deployment's CANN toolkit directory.
 export ASCEND_HOME_PATH=/path/to/cann
@@ -81,7 +78,7 @@ export PYTORCH_NPU_ALLOC_CONF=expandable_segments:False
 unset PYTORCH_NO_NPU_MEMORY_CACHING
 
 python -m pip wheel --no-deps . --wheel-dir dist
-python -m pip install --no-deps dist/torch_npu_memory_saver-0.1.5-*.whl
+python -m pip install --no-deps dist/torch_npu_memory_saver-0.1.6-*.whl
 python -c 'from importlib.metadata import version; print(version("torch-npu-memory-saver"))'
 ```
 
@@ -119,8 +116,21 @@ contents before reading the tensor or replaying a graph that consumes it.
 
 `region(tag, enable_cpu_backup)` routes allocations through owned PTA MemPools.
 This minimal extraction retains fixed tags: weights (backup/discard), kv_cache
-(discard), acl_graph (backup/discard). `allocation_region(PoolKey(...))` exposes
+(backup/discard), acl_graph (backup/discard). `allocation_region(PoolKey(...))` exposes
 separate pool scopes under one release tag. REMAIN uses the normal allocator.
+
+For KV contents that must survive sleep, allocate with
+`region(tag="kv_cache", enable_cpu_backup=True)` or
+`allocation_region(PoolKey("kv_cache", AllocationPolicy.CPU_BACKUP, scope))`.
+The native `kv_backup_malloc` callback copies device bytes to pinned host memory
+on pause and restores them at the original virtual address on resume. The
+existing `kv_malloc` callback and `enable_cpu_backup=False` retain discard
+semantics. Policies select separate owned pools under the same `kv_cache` tag;
+pausing or resuming that tag transitions all its pools. This library does not
+clear or rebuild KV layout tables or request/cache metadata. The caller must
+keep that metadata consistent with the selected content policy. Backup always
+restores its saved bytes; there is no snapshot invalidation or skipped H2D path.
+
 `npu_graph(graph, *, pool, stream, tag, policy, pool_scope,
 auto_dispatch_capture)` captures into an owned pool. `pause(tag=None)` and
 `resume(tag=None)` target one tag or all tags. `assert_active()` rejects paused

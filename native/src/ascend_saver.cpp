@@ -21,7 +21,7 @@ enum class Tag { Weights, KV, Graph };
 enum class Policy { Backup, Discard };
 enum class Phase { Active, Pausing, Paused, Resuming, Releasing };
 constexpr uint64_t kHugePageReservation = 1;
-constexpr int kSaverAbiVersion = 4;
+constexpr int kSaverAbiVersion = 5;
 thread_local char last_error[2048] = {};
 
 const char *tag_name(Tag t) {
@@ -531,6 +531,7 @@ void *weights_malloc(size_t n, int d, aclrtStream) { return allocate_callback(n,
 void *weights_backup_malloc(size_t n, int d, aclrtStream) { return allocate_callback(n, d, Tag::Weights, Policy::Backup); }
 void *weights_discard_malloc(size_t n, int d, aclrtStream) { return allocate_callback(n, d, Tag::Weights, Policy::Discard); }
 void *kv_malloc(size_t n, int d, aclrtStream) { return allocate_callback(n, d, Tag::KV, Policy::Discard); }
+void *kv_backup_malloc(size_t n, int d, aclrtStream) { return allocate_callback(n, d, Tag::KV, Policy::Backup); }
 void *graph_malloc(size_t n, int d, aclrtStream) { return allocate_callback(n, d, Tag::Graph, Policy::Backup); }
 void *graph_backup_malloc(size_t n, int d, aclrtStream) { return allocate_callback(n, d, Tag::Graph, Policy::Backup); }
 void *graph_discard_malloc(size_t n, int d, aclrtStream) { return allocate_callback(n, d, Tag::Graph, Policy::Discard); }
@@ -560,7 +561,7 @@ const char *saver_stats(void) {
     result = b.stats();
     return result.c_str();
   } catch (...) {
-    return "{\"abi_version\":4,\"stats_error\":\"cannot build statistics\"}";
+    return "{\"abi_version\":5,\"stats_error\":\"cannot build statistics\"}";
   }
 }
 } // extern C

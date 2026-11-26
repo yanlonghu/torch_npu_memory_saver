@@ -143,10 +143,12 @@ void policy_roundtrips() {
   };
   for (const auto &policy : {
            Policy{"weights", weights_backup_malloc, true},
+           Policy{"kv_cache", kv_backup_malloc, true},
+           Policy{"kv_cache", kv_malloc, false},
            Policy{"acl_graph", graph_backup_malloc, true},
            Policy{"acl_graph", graph_discard_malloc, false}}) {
     reset();
-    REQUIRE(saver_abi_version() == 4);
+    REQUIRE(saver_abi_version() == 5);
     constexpr size_t n = 7000;
     void *ptr = policy.allocate(n, 0, nullptr); REQUIRE(ptr);
     REQUIRE(stat_has("\"aligned_bytes\":8192"));
@@ -170,6 +172,33 @@ void policy_roundtrips() {
     REQUIRE(fake_acl::calls("aclrtReserveMemAddress") == 1);
     ok(saver_release(ptr));
   }
+}
+
+void kv_backup_and_discard_share_tag_without_losing_policy() {
+  reset();
+  void *backup = kv_backup_malloc(7000, 0, nullptr);
+  void *discard = kv_malloc(7000, 0, nullptr);
+  REQUIRE(backup && discard);
+  pattern(backup, 7000, 0x39);
+  pattern(discard, 7000, 0x72);
+  ok(saver_pause("kv_cache"));
+  REQUIRE(fake_acl::live_physical() == 0 && fake_acl::live_host() == 1);
+  fake_acl::fail_next("aclrtMemcpy");
+  REQUIRE(saver_resume("kv_cache") != 0);
+  REQUIRE(stat_has("\"backup_valid\":true"));
+  REQUIRE(fake_acl::live_host() == 1);
+  ok(saver_resume("kv_cache"));
+  expect_pattern(backup, 7000, 0x39);
+  expect_pattern(discard, 7000, 0xcd);
+  REQUIRE(fake_acl::live_host() == 0);
+  ok(saver_pause("kv_cache"));
+  const auto copies = fake_acl::calls("aclrtMemcpy");
+  // Releasing a sleeping KV pool must not restore its contents first.
+  ok(saver_release(backup));
+  ok(saver_release(discard));
+  REQUIRE(fake_acl::calls("aclrtMemcpy") == copies);
+  REQUIRE(fake_acl::live_host() == 0 && fake_acl::live_reservations() == 0);
+  ok(saver_resume("kv_cache"));
 }
 
 void default_policies_tags_and_paused_free() {
@@ -431,6 +460,7 @@ int main(int argc, char **argv) {
     REQUIRE(argc == 1);
     hccl_graph_lifetime();
     policy_roundtrips();
+    kv_backup_and_discard_share_tag_without_losing_policy();
     default_policies_tags_and_paused_free();
     pause_failure_matrix();
     resume_failure_matrix();

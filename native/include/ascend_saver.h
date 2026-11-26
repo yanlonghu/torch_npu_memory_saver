@@ -18,8 +18,8 @@
 extern "C" {
 #endif
 
-/* ABI v4 requires fail-closed HCCL registration handling.
- * ABI v3 cannot identify this safety contract; rebuild old native libraries.
+/* ABI v5 adds KV content backup to fail-closed HCCL registration handling.
+ * Older native libraries must be rebuilt with the matching Python package.
  * Bind the worker's NPU device before calling any mutating API.
  * The caller must stop new launches/allocations and wait for all prior users
  * before pause/resume. Final free synchronizes the current device before
@@ -51,7 +51,9 @@ SAVER_API int saver_close_hccl(void);
 SAVER_API void *weights_malloc(size_t size, int device, aclrtStream stream);
 SAVER_API void *weights_backup_malloc(size_t size, int device, aclrtStream stream);
 SAVER_API void *weights_discard_malloc(size_t size, int device, aclrtStream stream);
+/* kv_malloc discards contents; kv_backup_malloc restores the same KV bytes. */
 SAVER_API void *kv_malloc(size_t size, int device, aclrtStream stream);
+SAVER_API void *kv_backup_malloc(size_t size, int device, aclrtStream stream);
 SAVER_API void *graph_malloc(size_t size, int device, aclrtStream stream);
 SAVER_API void *graph_backup_malloc(size_t size, int device, aclrtStream stream);
 SAVER_API void *graph_discard_malloc(size_t size, int device, aclrtStream stream);

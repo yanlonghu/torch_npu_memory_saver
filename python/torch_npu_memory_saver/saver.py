@@ -66,14 +66,15 @@ class NativeBackend:
             abi_version = self.library.saver_abi_version
         except AttributeError as exc:
             raise RuntimeError(
-                f"Ascend memory saver requires native ABI 4; rebuild {library!r}"
+                f"Ascend memory saver requires native ABI 5; rebuild {library!r}"
             ) from exc
         abi_version.argtypes = []
         abi_version.restype = ctypes.c_int
         version = abi_version()
-        if version != 4:
+        if version != 5:
             raise RuntimeError(
-                "Ascend memory saver requires native ABI 4 with fail-closed HCCL "
+                "Ascend memory saver requires native ABI 5 with KV content backup "
+                "and fail-closed HCCL "
                 f"registration; loaded ABI {version} from {library!r}. "
                 "Rebuild the native library from the same revision as the Python code"
             )
@@ -194,6 +195,7 @@ class DeviceState:
             ("weights", AllocationPolicy.CPU_BACKUP): "weights_backup_malloc",
             ("weights", AllocationPolicy.DISCARD): "weights_discard_malloc",
             ("kv_cache", AllocationPolicy.DISCARD): "kv_malloc",
+            ("kv_cache", AllocationPolicy.CPU_BACKUP): "kv_backup_malloc",
             ("acl_graph", AllocationPolicy.CPU_BACKUP): "graph_backup_malloc",
             ("acl_graph", AllocationPolicy.DISCARD): "graph_discard_malloc",
         }
